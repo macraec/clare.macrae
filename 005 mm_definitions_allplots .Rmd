@@ -1,0 +1,490 @@
+---
+title: "Chapter 3 - definition of multimorbidity"
+output: html_document
+date: '2022-05-09'
+---
+
+## Load packages
+```{r setup, include=FALSE}
+library(tidyverse)
+library(epitools)
+library(ggsci) # for lancet colour scale
+library(ggrepel)
+library(data.table)
+library(ggforce)
+library(ggthemes)
+library(scales)
+install.packages("viridis")
+library(viridis)
+
+theme_set(theme_minimal(base_size = 20) +
+            theme(panel.grid.minor = element_blank(),
+                  panel.grid.major.x = element_blank(),
+                  panel.grid.major.y = element_line(size = 0.25),
+                  axis.line = element_line(colour = "black"),
+                  axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
+                  axis.title.x = element_text(margin = margin(20, 0, 0, 0)),
+                  plot.caption = element_text(colour = "#AAAAAA"),
+                  plot.margin = margin(3, 15, 3, 3, "mm")))
+```
+
+## Load dataset
+```{r cars}
+table_cmm_join <- read_csv("table_cmm_join.csv") 
+table_mp_join <- read_csv("table_mp_join.csv")
+```
+
+## Figure 1 - all definitions, x=age 
+## Prep dataframe
+```{r pressure, echo=FALSE}
+# Change col names to plot labels
+colnames(table_cmm_join) <- c("age_gender_IMD", "Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity", "n")
+
+# Pivot and set age-bins
+df_plot <- table_cmm_join %>%
+  pivot_longer(cols = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"), names_to = "definition", values_to = "count") %>%
+  replace(is.na(.),0) %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD")) %>%
+  select(-IMD) %>%
+  mutate(age = case_when(
+   age == '00to04' ~ "00 - 04", 
+   age == '05to09' ~ "05 - 09",
+   age == '10to14' ~ "10 - 14", 
+   age == '15to19' ~ "15 - 19",
+   age == '20to24' ~ "20 - 24", 
+   age == '25to29' ~ "25 - 29",
+   age == '30to34' ~ "30 - 34", 
+   age == '35to39' ~ "35 - 39",
+   age == '40to44' ~ "40 - 44", 
+   age == '45to49' ~ "45 - 49",
+   age == '50to54' ~ "50 - 54", 
+   age == '55to59' ~ "55 - 59",
+   age == '60to64' ~ "60 - 64", 
+   age == '65to69' ~ "65 - 69",
+   age == '70to74' ~ "70 - 74", 
+   age == '75to79' ~ "75 - 79",
+   age == '80to84' ~ "80 - 84", 
+   age == '85to89' ~ "85 - 89",
+   age == 'Over90' ~ "90+", 
+)) %>%
+  group_by(age, definition) %>%
+  summarise_if(is.numeric, sum) %>%
+  mutate(prop = count/n *100)
+
+# Factorise and set order
+df_plot$definition <- factor(df_plot$definition, levels = rev(c("age_gender_IMD", "Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity")))
+
+## Including gender stratification
+df_plot_gender <- table_cmm_join %>%
+  pivot_longer(cols = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"), names_to = "definition", values_to = "count") %>%
+  replace(is.na(.),0) %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD")) %>%
+  select(-IMD) %>%
+ mutate(age = case_when(
+   age == '00to04' ~ "00 - 04", 
+   age == '05to09' ~ "05 - 09",
+   age == '10to14' ~ "10 - 14", 
+   age == '15to19' ~ "15 - 19",
+   age == '20to24' ~ "20 - 24", 
+   age == '25to29' ~ "25 - 29",
+   age == '30to34' ~ "30 - 34", 
+   age == '35to39' ~ "35 - 39",
+   age == '40to44' ~ "40 - 44", 
+   age == '45to49' ~ "45 - 49",
+   age == '50to54' ~ "50 - 54", 
+   age == '55to59' ~ "55 - 59",
+   age == '60to64' ~ "60 - 64", 
+   age == '65to69' ~ "65 - 69",
+   age == '70to74' ~ "70 - 74", 
+   age == '75to79' ~ "75 - 79",
+   age == '80to84' ~ "80 - 84", 
+   age == '85to89' ~ "85 - 89",
+   age == 'Over90' ~ "90+", 
+)) %>%
+   mutate(gender = case_when(
+    gender == '1' ~ "Men",
+    gender == '2' ~ "Women")) %>%
+  group_by(age, gender, definition) %>%
+  summarise_if(is.numeric, sum) %>%
+  mutate(prop = count/n *100)
+
+# Factorise and set order
+df_plot_gender$definition <- factor(df_plot_gender$definition, levels = c("age_gender_IMD", "Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"))
+```
+
+
+## Figure 1 - all definitions, x=age 
+```{r}
+df_plot %>% 
+  ggplot() +
+  aes(age, prop, group = definition, colour = definition)+
+  geom_line(size = 2)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.2, .7)) +
+  theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population") +
+  scale_colour_ptol()
+  
+ggsave("fig1_definitions.png", width = 16, height = 12)
+ggsave("fig1_definitions.pdf", width = 16, height = 12)
+```
+
+## Exclude or need to age-statndardise this
+## Figure 1 - all definitions, x=age, stratified=gender
+```{r}
+df_plot_gender %>% 
+  ggplot() +
+  aes(age, prop, group = gender, colour = gender)+
+  geom_line(size = 2)+
+  facet_wrap(~definition, scales="free")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population") +
+  scale_colour_ptol()
+  
+ggsave("suppfig1_definitions_gender.png", width = 16, height = 12)
+ggsave("suppfig1_definitions_gender.pdf", width = 16, height = 12)
+```
+
+## Figure 2 - all definitions, x=IMD plot
+## Prep dataframe
+```{r}
+df_plot_IMD <- table_cmm_join %>%
+  pivot_longer(cols = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"), names_to = "definition", values_to = "count") %>%
+  replace(is.na(.),0) %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD Decile")) %>%
+  select(-gender) %>%
+  mutate(age = case_when(
+   age == '00to04' ~ "00 - 04", 
+   age == '05to09' ~ "05 - 09",
+   age == '10to14' ~ "10 - 14", 
+   age == '15to19' ~ "15 - 19",
+   age == '20to24' ~ "20 - 24", 
+   age == '25to29' ~ "25 - 29",
+   age == '30to34' ~ "30 - 34", 
+   age == '35to39' ~ "35 - 39",
+   age == '40to44' ~ "40 - 44", 
+   age == '45to49' ~ "45 - 49",
+   age == '50to54' ~ "50 - 54", 
+   age == '55to59' ~ "55 - 59",
+   age == '60to64' ~ "60 - 64", 
+   age == '65to69' ~ "65 - 69",
+   age == '70to74' ~ "70 - 74", 
+   age == '75to79' ~ "75 - 79",
+   age == '80to84' ~ "80 - 84", 
+   age == '85to89' ~ "85 - 89",
+   age == 'Over90' ~ "90+", 
+)) %>%
+  mutate(`IMD Decile` = case_when(
+    `IMD Decile` == '01' ~ "1 (least deprived)",
+    `IMD Decile` == '02' ~ "2",
+    `IMD Decile` == '03' ~ "3",
+    `IMD Decile` == '04' ~ "4",
+    `IMD Decile` == '05' ~ "5",
+    `IMD Decile` == '06' ~ "6",
+    `IMD Decile` == '07' ~ "7",
+    `IMD Decile` == '08' ~ "8",
+    `IMD Decile` == '09' ~ "9",
+    `IMD Decile` == '10' ~ "10 (most deprived)"
+  )) %>%
+  group_by(age, `IMD Decile`, definition) %>%
+  summarise_if(is.numeric, sum) %>%
+  mutate(prop = count/n *100)
+
+df_plot_IMD$definition <- factor(df_plot_IMD$definition, levels = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"))
+
+df_plot_IMD$`IMD Decile` <- factor(df_plot_IMD$`IMD Decile`, levels = c("1 (least deprived)", "2", "3", "4", "5", "6", "7", "8", "9", "10 (most deprived)"))
+```
+
+## Supp Figure 2 - all definitions, x=IMD plot
+```{r}
+df_plot_IMD %>% 
+  filter(definition == "Multimorbidity 2+") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with multimorbidity 2+") +
+  scale_colour_ptol()
+  
+ggsave("suppfig2_IMD_mm2.pdf", width = 16, height = 12)
+
+
+df_plot_IMD %>% 
+  filter(definition == "Multimorbidity 3+") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with multimorbidity 3+") +
+  scale_colour_ptol()
+  
+ggsave("suppfig2_IMD_mm3.pdf", width = 16, height = 12)
+
+df_plot_IMD %>% 
+  filter(definition == "Multimorbidity 3+ from 3+") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with multimorbidity 3+ from 3+") +
+  scale_colour_ptol()
+  
+ggsave("suppfig2_IMD_mm3from3.pdf", width = 16, height = 12)
+
+df_plot_IMD %>% 
+  filter(definition == "Mental-physical multimorbidity") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with mental-physical multimorbidity") +
+  scale_colour_ptol()
+  
+ggsave("suppfig2_IMD_mp1.pdf", width = 16, height = 12)
+```
+
+## Figure 2 - all definitions, x=IMD plot
+```{r}
+df_plot_IMD <- df_plot_IMD %>%
+  filter(`IMD Decile` %in% c("1 (least deprived)", "10 (most deprived)")) %>%
+  rowwise %>%
+  mutate(prop = ((prop.test(count, n, conf.level=0.95)$estimate)*100),
+         lci = ((prop.test(count, n, conf.level=0.95)$conf.int[1])*100),
+         uci = ((prop.test(count, n, conf.level=0.95)$conf.int[2])*100)) %>%
+  mutate_if(is.numeric,
+            round,
+            digits = 2)
+
+df_plot_IMD %>% 
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  geom_errorbar(aes(ymin=lci, ymax=uci), width=.1) +
+  facet_wrap(~definition, scales="free")+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population") +
+  scale_colour_ptol()
+  
+ggsave("fig2_definitions_IMD.png", width = 16, height = 12)
+ggsave("fig2_definitions_IMD.pdf", width = 16, height = 12)
+```
+
+
+## Supp figure 3 - mental-physical multimorbidity
+## Prep dataframe
+```{r}
+colnames(table_mp_join) <- c("age_gender_IMD", "Depression anxiety physical", "Dementia physical", "Substance alcohol misuse physical", "Schizophrenia bipolar physical", "n")
+
+df_plot_mp_IMD <- table_mp_join %>%
+  pivot_longer(cols = c("Depression anxiety physical", "Dementia physical", "Substance alcohol misuse physical", "Schizophrenia bipolar physical"), names_to = "definition", values_to = "count") %>%
+  replace(is.na(.),0) %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD Decile")) %>%
+  select(-gender) %>%
+  group_by(age, `IMD Decile`, definition) %>%
+  summarise_if(is.numeric, sum) %>%
+ mutate(age = case_when(
+   age == '00to04' ~ "00 - 04", 
+   age == '05to09' ~ "05 - 09",
+   age == '10to14' ~ "10 - 14", 
+   age == '15to19' ~ "15 - 19",
+   age == '20to24' ~ "20 - 24", 
+   age == '25to29' ~ "25 - 29",
+   age == '30to34' ~ "30 - 34", 
+   age == '35to39' ~ "35 - 39",
+   age == '40to44' ~ "40 - 44", 
+   age == '45to49' ~ "45 - 49",
+   age == '50to54' ~ "50 - 54", 
+   age == '55to59' ~ "55 - 59",
+   age == '60to64' ~ "60 - 64", 
+   age == '65to69' ~ "65 - 69",
+   age == '70to74' ~ "70 - 74", 
+   age == '75to79' ~ "75 - 79",
+   age == '80to84' ~ "80 - 84", 
+   age == '85to89' ~ "85 - 89",
+   age == 'Over90' ~ "90+", 
+  )) %>%
+  mutate(`IMD Decile` = case_when(
+    `IMD Decile` == '01' ~ "1 (least deprived)",
+    `IMD Decile` == '02' ~ "2",
+    `IMD Decile` == '03' ~ "3",
+    `IMD Decile` == '04' ~ "4",
+    `IMD Decile` == '05' ~ "5",
+    `IMD Decile` == '06' ~ "6",
+    `IMD Decile` == '07' ~ "7",
+    `IMD Decile` == '08' ~ "8",
+    `IMD Decile` == '09' ~ "9",
+    `IMD Decile` == '10' ~ "10 (most deprived)"
+  )) %>%
+  group_by(age, `IMD Decile`, definition) %>%
+  summarise_if(is.numeric, sum) %>%
+  mutate(prop = count/n *100)
+
+df_plot_mp_IMD$definition <- factor(df_plot_mp_IMD$definition, levels = c("Depression anxiety physical", "Substance alcohol misuse physical", "Schizophrenia bipolar physical", "Dementia physical"))
+
+df_plot_mp_IMD$`IMD Decile` <- factor(df_plot_mp_IMD$`IMD Decile`, levels = c("1 (least deprived)", "2", "3", "4", "5", "6", "7", "8", "9", "10 (most deprived)"))
+```
+
+
+## Supp Figures 5-8 - all definitions, x=IMD plot
+```{r}
+df_plot_mp_IMD %>% 
+  filter(definition == "Depression anxiety physical") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 45), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with depression/anxiety-physical multiorbidity") +
+  scale_colour_ptol()
+  
+ggsave("suppfig3_IMD_depanx.pdf", width = 16, height = 12)
+
+
+df_plot_mp_IMD %>% 
+  filter(definition == "Substance alcohol misuse physical") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 45), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with substance/alcohol-physical multimorbidity") +
+  scale_colour_ptol()
+  
+ggsave("suppfig3_IMD_subst.pdf", width = 16, height = 12)
+
+df_plot_mp_IMD %>% 
+  filter(definition == "Schizophrenia bipolar physical") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 45), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with schizophrenia/bipolar-physical multimorbidity") +
+  scale_colour_ptol()
+  
+ggsave("suppfig3_IMD_schiz.pdf", width = 16, height = 12)
+
+df_plot_mp_IMD %>% 
+  filter(definition == "Substance alcohol misuse physical") %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 1)+
+  theme(axis.ticks.x = element_line()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 45), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population with demential-physical multimorbidity") +
+  scale_colour_ptol()
+  
+ggsave("suppfig3_IMD_dementia.pdf", width = 16, height = 12)
+```
+
+## Figure 3 - Mental-physical multimorbidity subdivisions
+```{r}
+df_plot_mp_IMD <- df_plot_mp_IMD %>% 
+  filter(`IMD Decile` %in% c("1 (least deprived)", "10 (most deprived)")) %>%
+  rowwise %>%
+  mutate(prop = ((prop.test(count, n, conf.level=0.95)$estimate)*100),
+         lci = ((prop.test(count, n, conf.level=0.95)$conf.int[1])*100),
+         uci = ((prop.test(count, n, conf.level=0.95)$conf.int[2])*100)) %>%
+  mutate_if(is.numeric,
+            round,
+            digits = 2)
+
+df_plot_mp_IMD %>%
+  ggplot() +
+  aes(age, prop, group = `IMD Decile`, colour = `IMD Decile`)+
+  geom_line(size = 2)+
+  geom_errorbar(aes(ymin=lci, ymax=uci), width=.1) +
+  facet_wrap(~definition, scales="free")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(legend.position = c(.1, .87)) +
+  #theme(legend.title=element_blank()) +
+  scale_y_continuous(limits= c(0, 45), expand = c(0,0), 
+                     breaks = scales::pretty_breaks(n = 4))+
+  scale_x_discrete(expand = c(0,0))+
+  guides(colour = guide_legend(reverse = TRUE)) +
+  labs(x = "Age group (years)",
+       y = "% population") +
+  scale_colour_ptol()
+  
+ggsave("suppfig3_mpdefinitions_IMD.pdf", width = 16, height = 12)
+```
