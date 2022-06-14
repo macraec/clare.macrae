@@ -1,0 +1,398 @@
+
+---
+title: "Chapter 3 - definitions of multimorbidity"
+output: html_document
+date: '2022-04-07'
+---
+
+## Load packages and set plot 
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggsci) # for lancet colour scale
+library(ggrepel)
+library(data.table)
+library(ggforce)
+
+
+theme_set(theme_minimal(base_size = 20) +
+            theme(panel.grid.minor = element_blank(),
+                  panel.grid.major = element_line(size = 0.25),
+                  axis.line = element_line(colour = "black"),
+                  axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
+                  axis.title.x = element_text(margin = margin(20, 0, 0, 0)),
+                  plot.caption = element_text(colour = "#AAAAAA"),
+                  plot.margin = margin(3, 15, 3, 3, "mm")))
+```
+
+## Prepare dataset for use in plot
+
+```{r}
+base_table_max <- 
+  read_csv("table_join_agegendIMD.csv",
+           col_types = cols()) %>% 
+  separate(age_gender_IMD, c("age", "gender", "IMD")) %>% 
+  select(-gender, -IMD, -age)
+
+table_max <- 
+  base_table_max %>% 
+  summarize(across(where(is.numeric),~sum(.x))) %>%
+  pivot_longer(!n, names_to = "mm", values_to = "count") %>%
+  rowwise %>%
+  mutate(prop = ((prop.test(count, n, conf.level=0.95)$estimate)*100),
+         lci = ((prop.test(count, n, conf.level=0.95)$conf.int[1])*100),
+         uci = ((prop.test(count, n, conf.level=0.95)$conf.int[2])*100)) %>%
+   mutate_if(is.numeric,
+            round,
+            digits = 1) %>%
+  mutate(mm = str_replace(mm, "mm_", ""))
+
+table_max$mm <- as.integer(table_max$mm)
+write_csv(table_max, file="table_max.csv")
+```
+
+## Max_min plot
+
+```{r, fig.width=12, fig.height=9}
+ggplot(data=table_max, aes(x=mm, y=prop, group=1))+
+  geom_line()+
+  scale_y_continuous(limits= c(0, 45), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 2.5))) +
+  scale_x_continuous(limits = c(0, 80), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 9.5))) +
+  theme(legend.position = "top") +
+  labs(x = "Number of conditions in the multimorbidity measure",
+       y = "% with multimorbidity",
+       #To remove legend title
+       colour = "")+
+  #To change legend labels
+  scale_colour_grey(labels = c("Maximum multimorbidity", "Minimum multimorbidity"))
+  
+  
+ggsave("max.png", width = 16, height = 12)
+ggsave("max.pdf", width = 16, height = 12)
+```
+
+## Age on x, stratified by condition list
+
+```{r}
+condlists_join <- read_csv("table_join_condlists.csv")
+
+df <- read_csv("table_join_agegendIMD.csv") %>%
+  select(age_gender_IMD, mm_80) %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD")) %>%
+  mutate(age_IMD_gender = interaction(age, IMD, gender)) %>%
+  select(age_IMD_gender, mm_80)
+
+condlists_plot <- left_join(condlists_join, df, by = "age_IMD_gender")
+
+condlists_plot[is.na(condlists_plot)] = 0
+
+condlists_plot <- condlists_plot %>%
+  separate(age_IMD_gender, c("age", "IMD", "gender")) %>%
+  mutate(age = case_when(
+    age == '00to04' | age == '05to09' ~ "0 - 9",
+    age == '10to14' | age == '15to19' ~ "10 - 19",
+    age == '20to24' | age == '25to29' ~ "20 - 29",
+    age == '30to34' | age == '35to39' ~ "30 - 39",
+    age == '40to44' | age == '45to49' ~ "40 - 49",
+    age == '50to54' | age == '55to59' ~ "50 - 59",
+    age == '60to64' | age == '65to69' ~ "60 - 69",
+    age == '70to74' | age == '75to79' ~ "70 - 79",
+    age == '80to84' | age == '85to89' | age == 'Over90' ~ "80+"
+  )) %>% 
+  select(age, always, always_usually, barnett, charlson, diederichs, elixhauser, fortin, salive, mm_80, n) %>%
+  group_by(age) %>%
+  summarize(across(where(is.numeric),~sum(.x))) %>%
+  mutate('HDR-UK always (23 conditions)' = always/n *100,
+         'HDR-UK always or usually (46 conditions)' = always_usually/n *100,
+         'Barnett (33 conditions)' = barnett/n *100,
+         'Charlson (15 conditions)' = charlson/n *100,
+         'Diederichs (11 conditions)' = diederichs/n *100,
+         'Elixhauser (22 conditions)' = elixhauser/n *100,
+         'Fortin (20 conditions)' = fortin/n *100,
+         'Salive (14 conditions)' = salive/n *100, 
+         'All 80 conditions' = mm_80/n *100) %>%
+ select(age, 'All 80 conditions', 'HDR-UK always or usually (46 conditions)', 'Fortin (20 conditions)', 'Barnett (33 conditions)', 'Salive (14 conditions)', 'Elixhauser (22 conditions)', 'Diederichs (11 conditions)', 'Charlson (15 conditions)', 'HDR-UK always (23 conditions)') %>%
+  pivot_longer(!age, names_to = "mm", values_to = "prop") %>%                   # Using dplyr functions
+  mutate_if(is.numeric,
+            round,
+            digits = 1)
+
+condlists_plot$age <- factor(condlists_plot$age, levels = c('0 - 9', '10 - 19', '20 - 29','30 - 39', '40 - 49', '50 - 59', '60 - 69', '70 - 79', '80+'))
+
+condlists_plot$mm <- factor(condlists_plot$mm, levels = c('All 80 conditions', 'HDR-UK always or usually (46 conditions)', 'Fortin (20 conditions)', 'Barnett (33 conditions)', 'Salive (14 conditions)', 'Elixhauser (22 conditions)', 'Diederichs (11 conditions)', 'Charlson (15 conditions)', 'HDR-UK always (23 conditions)'))
+```
+
+## Figure 3b plot with age as x-axis, all lines in light grey with selected condition lists in bold
+
+```{r, fig.width=12, fig.height=9}
+condlists_plot %>% 
+  ggplot() +
+  aes(age, prop, group = mm)+
+  geom_line()+
+  geom_text_repel(data=subset(condlists_plot, age == "80+"), aes(label = mm), 
+                  size = 5, nudge_x = 1, nudge_y = 1.5,
+                  direction = "y", segment.linetype = "dotted") +
+  scale_y_continuous(limits= c(0, 100), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 2.5))) +
+  scale_x_discrete(expand = expansion(add = c(0, 2.0))) +
+  theme(legend.position = "none") +
+  labs(x = "Age group (years)",
+       y = "% with multimorbidity")
+
+ggsave("age_xaxis_condlists.png", width = 16, height = 12)
+ggsave("age_xaxis_condlists.pdf", width = 16, height = 12)
+```
+
+
+
+## Conditions on x, stratified by age
+
+```{r}
+base_table <- 
+  read_csv("table_join_agegendIMD.csv",
+           col_types = cols()) %>% 
+  separate(age_gender_IMD, c("age", "gender", "IMD")) %>% 
+  select(-gender, -IMD) %>%
+  mutate(age = case_when(
+    age == '00to04' | age == '05to09' ~ "0 - 9 years",
+    age == '10to14' | age == '15to19' ~ "10 - 19 years",
+    age == '20to24' | age == '25to29' ~ "20 - 29 years",
+    age == '30to34' | age == '35to39' ~ "30 - 39 years",
+    age == '40to44' | age == '45to49' ~ "40 - 49 years",
+    age == '50to54' | age == '55to59' ~ "50 - 59 years",
+    age == '60to64' | age == '65to69' ~ "60 - 69 years",
+    age == '70to74' | age == '75to79' ~ "70 - 79 years",
+    age == '80to84' | age == '85to89' | age == 'Over90' ~ "80+ years"
+  ))
+
+table_age <- 
+  base_table %>% 
+  group_by(age) %>%
+  summarize(across(where(is.numeric),~sum(.x))) %>%
+  pivot_longer(!age, names_to = "mm", values_to = "count") 
+
+## Calculate denominator
+df <- 
+  base_table %>% 
+  group_by(age) %>%
+  summarize(SUMS = sum(n))
+
+## Join denominator to main file, calculate proportion and factorise age
+age_plot <- 
+  left_join(table_age, df, by = "age") %>%
+  filter(!mm == "n") %>% 
+  mutate(prop = count/SUMS * 100,
+         age = factor(age, 
+                      levels = c('80+ years', '70 - 79 years', '60 - 69 years',
+                                 '50 - 59 years', '40 - 49 years', 
+                                 '30 - 39 years', '20 - 29 years', 
+                                 '10 - 19 years', '0 - 9 years')),
+         mm = str_replace(mm, "mm_", "") %>% 
+           as.integer()) %>% 
+  select(-SUMS) 
+```
+
+## Plot
+
+```{r, fig.width=16, fig.height=12}
+age_plot %>% 
+  ggplot() +
+  aes(mm, prop, group = age)+
+  geom_line()+
+  scale_y_continuous(limits= c(0, 100), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 2.5))) +
+  scale_x_continuous(limits = c(0, 80), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 9.5))) +
+  theme(legend.position = "none") +
+  labs(x = "Number of conditions considered in the count",
+       y = "% of each IMD-decile with multimorbidity")
+  
+
+ggsave("age_stratified.png", width = 16, height = 12)
+ggsave("age_stratified.pdf", width = 16, height = 12)
+```
+
+## Prep age on x-axis plot
+
+```{r}
+age_plot_subset <- age_plot %>%
+  select(age, mm, prop) %>%
+  filter(mm == "2" | mm == "3" | mm == "4" | mm == "5" | mm == "6" | mm == "7" | mm == "8" | mm == "9" | mm == "10" | mm == "20" | mm == "40" | mm == "80")
+age_plot_subset$mm <- recode(age_plot_subset$mm,
+                             '80' = '80 conditions',
+                             '40' = '40 conditions',
+                             '20' = '20 conditions',
+                             '10' = '10 conditions',
+                             '9' = '9 conditions',
+                             '8' = '8 conditions',
+                             '7' = '7 conditions',
+                             '6' = '6 conditions',
+                             '5' = '5 conditions',
+                             '4' = '4 conditions',
+                             '3' = '3 conditions',
+                             '2' = '2 conditions')
+                                                              
+age_plot_subset$mm <- factor(age_plot_subset$mm, levels = c('80 conditions', '40 conditions', '20 conditions', '10 conditions', '9 conditions', '8 conditions', '7 conditions', '6 conditions', '5 conditions', '4 conditions',  '3 conditions', '2 conditions'))
+
+age_plot_subset <- age_plot_subset %>%
+  mutate(age = case_when(
+    age == "0 - 9 years" ~ "0 - 9",
+    age == "10 - 19 years" ~ "10 - 19",
+    age == "20 - 29 years" ~ "20 - 29",
+    age == "30 - 39 years" ~ "30 - 39",
+    age == "40 - 49 years" ~ "40 - 49",
+    age == "50 - 59 years" ~ "50 - 59",
+    age == "60 - 69 years" ~ "60 - 69",
+    age == "70 - 79 years" ~ "70 - 79",
+    age == "≥80 years" ~ "80+"
+  ))
+
+age_plot_subset$age <- factor(age_plot_subset$age, levels = c('0 - 9', '10 - 19', '20 - 29','30 - 39', '40 - 49', '50 - 59', '60 - 69', '70 - 79', '80+'))
+```
+
+## Plot age on x-axis, subset of number of conditions
+
+```{r, fig.width=12, fig.height=9}
+age_plot_subset %>% 
+  ggplot() +
+  aes(age, prop, group = mm)+
+  geom_line()+
+  geom_text_repel(data=subset(age_plot_subset, age == "80+"), aes(label = mm), 
+                  size = 5, nudge_x = 5, nudge_y = 1.5,
+                  direction = "y", segment.linetype = "dotted") +
+  scale_y_continuous(limits= c(0, 100), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 2.5))) +
+  scale_x_discrete(expand = expansion(add = c(0, 2.0))) +
+  theme(legend.position = "none") +
+  labs(x = "Age group (years)",
+       y = "% with multimorbidity")
+  
+
+ggsave("age_xaxis.png", width = 16, height = 12)
+ggsave("age_xaxis.pdf", width = 16, height = 12)
+```
+
+## Conditions on x, stratified by IMD
+
+```{r}
+base_table <- 
+  read_csv("table_join_agegendIMD.csv",
+           col_types = cols()) %>% 
+  separate(age_gender_IMD, c("age", "gender", "IMD")) %>% 
+  select(-gender, -age)
+
+table_IMD <- 
+  base_table %>% 
+  group_by(IMD) %>%
+  summarize(across(where(is.numeric),~sum(.x))) %>%
+  pivot_longer(!IMD, names_to = "mm", values_to = "count") 
+
+## Calculate denominator
+df <- 
+  base_table %>% 
+  group_by(IMD) %>%
+  summarize(SUMS = sum(n))
+
+## Join denominator to main file, calculate proportion and factorise age
+IMD_plot <- 
+  left_join(table_IMD, df, by = "IMD") %>%
+  filter(!mm == "n") %>% 
+  mutate(prop = count/SUMS * 100,
+         IMD = factor(IMD, 
+                      levels = c('10', '09', '08',
+                                 '07', '06', 
+                                 '05', '04', 
+                                 '03', '02', '01')),
+         mm = str_replace(mm, "mm_", "")) %>% 
+  select(-SUMS) 
+
+IMD_plot$mm <- as.integer(IMD_plot$mm)
+
+IMD_plot <- IMD_plot %>%
+  mutate(IMD = recode(IMD, '01' = '01 (most affluent)',
+                     '10' = '10 (most deprived)'))
+```
+
+## Plot
+
+```{r, fig.width=16, fig.height=12}
+IMD_plot %>% 
+  ggplot() +
+  aes(mm, prop, group = IMD)+
+  geom_line()+
+  scale_y_continuous(limits= c(0, 43), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 2.5))) +
+  scale_x_continuous(limits = c(0, 80), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 9.5))) +
+  theme(legend.position = "none") +
+  labs(x = "Number of conditions considered in the count",
+       y = "% of each IMD-decile with multimorbidity")
+  
+
+ggsave("IMD_stratified.png", width = 16, height = 12)
+ggsave("IMD_stratified.pdf", width = 16, height = 12)
+```
+
+## Conditions on x, stratified by sex
+
+```{r}
+base_table <- 
+  read_csv("table_join_agegendIMD.csv",
+           col_types = cols()) %>% 
+  separate(age_gender_IMD, c("age", "gender", "IMD")) %>% 
+  select(-IMD, -age)
+
+table_gender <- 
+  base_table %>% 
+  group_by(gender) %>%
+  summarize(across(where(is.numeric),~sum(.x))) %>%
+  pivot_longer(!gender, names_to = "mm", values_to = "count") 
+
+## Calculate denominator
+df <- 
+  base_table %>% 
+  group_by(gender) %>%
+  summarize(SUMS = sum(n))
+
+## Join denominator to main file, calculate proportion and factorise age
+gender_plot <- 
+  left_join(table_gender, df, by = "gender") %>%
+  filter(!mm == "n") %>% 
+  mutate(prop = count/SUMS * 100) %>%
+  mutate(mm = str_replace(mm, "mm_", "")) %>% 
+  select(-SUMS) 
+
+gender_plot$mm <- as.integer(gender_plot$mm)
+```
+
+## Plot
+
+```{r, fig.width=16, fig.height=12}
+gender_plot %>% 
+  ggplot() +
+  aes(mm, prop, group = gender)+
+  geom_line()+
+  scale_y_continuous(limits= c(0, 45), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 2.5))) +
+  scale_x_continuous(limits = c(0, 80), 
+                     breaks = scales::pretty_breaks(n = 10),
+                     expand = expansion(add = c(0, 9.5))) +
+  theme(legend.position = "none") +
+  labs(x = "Number of conditions considered in the count",
+       y = "% of each IMD-decile with multimorbidity")
+  
+
+ggsave("gender_stratified.png", width = 16, height = 12)
+ggsave("gender_stratified.pdf", width = 16, height = 12)
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
