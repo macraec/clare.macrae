@@ -134,33 +134,59 @@ df_plot %>%
 ggsave("fig1_definitions.png", width = 16, height = 12)
 ggsave("fig1_definitions.pdf", width = 16, height = 12)
 ```
-
-## Exclude or need to age-statndardise this
-## Figure 1 - all definitions, x=age, stratified=gender
+## Create dataframe for age-adjusted rates, IMD and sex
 ```{r}
-df_plot_gender %>% 
-  ggplot() +
-  aes(age, prop, group = gender, colour = gender)+
-  geom_line(size = 2)+
-  facet_wrap(~definition, scales="free")+
-  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))+
-  theme(legend.position = c(.1, .87)) +
-  theme(legend.title=element_blank()) +
-  scale_y_continuous(limits= c(0, 100), expand = c(0,0), 
-                     breaks = scales::pretty_breaks(n = 4))+
-  scale_x_discrete(expand = c(0,0))+
-  guides(colour = guide_legend(reverse = TRUE)) +
-  labs(x = "Age group (years)",
-       y = "% population") +
-  scale_colour_ptol()
+IMD_ageadj <- table_cmm_join %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD Decile")) %>%
+  replace(is.na(.),0)
   
-ggsave("suppfig1_definitions_gender.png", width = 16, height = 12)
-ggsave("suppfig1_definitions_gender.pdf", width = 16, height = 12)
+IMD_ageadj$gender <- NULL
+
+IMD_ageadj <- IMD_ageadj %>%
+  pivot_longer(cols = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"), names_to = "definition", values_to = "count") %>%
+  group_by(age) %>%
+  mutate(standard = mean(n)) %>%
+  group_by(definition, `IMD Decile`) %>%
+  summarise(ageadj = list(round(ageadjust.direct(count, n, stdpop = standard)*10^2,1))) %>%
+  unnest_wider(ageadj)
+  
+write_csv(IMD_ageadj, file = "IMD_ageadj.csv")
+
+gender_ageadj <- table_cmm_join %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD Decile")) %>%
+  replace(is.na(.),0)
+  
+gender_ageadj$`IMD Decile` <- NULL
+
+gender_ageadj <- sex_ageadj %>%
+  pivot_longer(cols = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"), names_to = "definition", values_to = "count") %>%
+  group_by(age) %>%
+  mutate(standard = mean(n)) %>%
+  group_by(definition, gender) %>%
+  summarise(ageadj = list(round(ageadjust.direct(count, n, stdpop = standard)*10^2,1))) %>%
+  unnest_wider(ageadj)
+  
+write_csv(gender_ageadj, file = "gender_ageadj.csv")
 ```
 
 ## Figure 2 - all definitions, x=IMD plot
 ## Prep dataframe
 ```{r}
+df_plot_IMD <- table_cmm_join %>%
+  separate("age_gender_IMD", c("age", "gender", "IMD Decile")) %>%
+  replace(is.na(.),0)
+  
+df_plot_IMD$gender <- NULL
+
+df_plot_IMD <- df_plot_IMD %>%
+  pivot_longer(cols = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"), names_to = "definition", values_to = "count") %>%
+  group_by(age) %>%
+  mutate(standard = mean(n)) %>%
+  group_by(definition, `IMD Decile`) %>%
+  summarise(ageadj = list(round(ageadjust.direct(count, n, stdpop = standard)*10^2,1))) %>%
+  unnest_wider(ageadj)
+  
+  
 df_plot_IMD <- table_cmm_join %>%
   pivot_longer(cols = c("Multimorbidity 2+", "Multimorbidity 3+", "Multimorbidity 3+ from 3+", "Mental-physical multimorbidity"), names_to = "definition", values_to = "count") %>%
   replace(is.na(.),0) %>%
